@@ -44,8 +44,14 @@ end
 # Return `Reflection` for signature `sigtypes` and `world`, if possible. Otherwise, return `nothing`.
 function reflect(@nospecialize(sigtypes::Tuple), world::UInt = typemax(UInt))
     if length(sigtypes) > 2 && sigtypes[1] === typeof(invoke)
-        @assert sigtypes[3] <: Type{<:Tuple}
-        sigtypes = (sigtypes[2], sigtypes[3].parameters[1].parameters...)
+        # @assert sigtypes[3] <: Type{<:Tuple}
+        # Core.println(sigtypes)
+        # Core.println("sigtypes[4]: $(sigtypes[4])")
+        # num_args =
+        # argtypes = sigtypes[3].parameters[1].parameters[1 : le]
+        ftype = sigtypes[2]
+        sigtypes = (ftype, sigtypes[3].parameters[1].parameters...)
+        # Core.println("sigtypes 2: $(sigtypes)")
     end
     # This works around a subtyping bug. Basically, callers can deconstruct upstream
     # `UnionAll` types in such a way that results in a type with free type variables, in
@@ -131,6 +137,13 @@ function overdub_pass!(reflection::Reflection,
     static_params = reflection.static_params
     code_info = reflection.code_info
 
+    if is_invoke
+        Core.println("method: $method")
+        Core.println("method.nargs: $(method.nargs)")
+        Core.println("method.isva: $(method.isva)")
+        Core.println("code_info: $(code_info)")
+    end
+
     # TODO: This `iskwfunc` is part of a hack that `overdub_pass!` implements in order to fix
     # jrevels/Cassette.jl#48. The assumptions made by this hack are quite fragile, so we
     # should eventually get Base to expose a standard/documented API for this. Here, we see
@@ -177,6 +190,9 @@ function overdub_pass!(reflection::Reflection,
     # destructure the generated argument slots into the overdubbed method's argument slots.
     n_actual_args = fieldcount(signature)
     n_method_args = Int(method.nargs)
+    Core.println("signature: $signature")
+    Core.println("n_actual_args: $n_actual_args")
+    Core.println("n_method_args: $n_method_args")
     for i in 1:n_method_args
         slot = i + n_prepended_slots
         offset = i + invoke_offset
@@ -476,6 +492,7 @@ function overdub_pass!(reflection::Reflection,
     code_info.codelocs = overdubbed_codelocs
     code_info.ssavaluetypes = length(overdubbed_code)
     reflection.code_info = code_info
+    Core.println("new code_info: $(code_info)")
 
     return reflection
 end
@@ -498,6 +515,12 @@ function __overdub_generator__(self, context_type, args::Tuple)
                 untagged_args = ((untagtype(args[i], context_type) for i in 1:nfields(args))...,)
                 reflection = reflect(untagged_args)
                 if isa(reflection, Reflection)
+                    if is_invoke
+                        Core.println("args: $args")
+                        Core.println("untagged_args: $untagged_args")
+                        Core.println("reflection: $reflection")
+                        Core.println()
+                    end
                     result = overdub_pass!(reflection, context_type, is_invoke)
                     isa(result, Expr) && return result
                     return reflection.code_info
